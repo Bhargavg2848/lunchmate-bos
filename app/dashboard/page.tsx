@@ -8,7 +8,10 @@ export default async function DashboardHomePage() {
     data: { user }
   } = await supabase.auth.getUser();
 
-  const { count } = await supabase.from("customers").select("id", { count: "exact", head: true });
+  const [{ count: customerCount }, { count: orderCount }] = await Promise.all([
+    supabase.from("customers").select("id", { count: "exact", head: true }),
+    supabase.from("orders").select("id", { count: "exact", head: true })
+  ]);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 p-6">
@@ -20,7 +23,12 @@ export default async function DashboardHomePage() {
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <article className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <p className="text-sm text-slate-500">Customers</p>
-          <p className="mt-2 text-2xl font-bold">{count ?? 0}</p>
+          <p className="mt-2 text-2xl font-bold">{customerCount ?? 0}</p>
+        </article>
+
+        <article className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <p className="text-sm text-slate-500">Orders</p>
+          <p className="mt-2 text-2xl font-bold">{orderCount ?? 0}</p>
         </article>
       </section>
 
@@ -29,6 +37,12 @@ export default async function DashboardHomePage() {
         <div className="mt-3 flex flex-wrap gap-3">
           <Link href="/dashboard/customers" className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white">
             Open Customers
+          </Link>
+          <Link href="/dashboard/catalog" className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white">
+            Open Catalog
+          </Link>
+          <Link href="/dashboard/orders" className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white">
+            Open Orders
           </Link>
         </div>
       </section>
