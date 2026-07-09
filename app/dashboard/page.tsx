@@ -8,10 +8,16 @@ export default async function DashboardHomePage() {
     data: { user }
   } = await supabase.auth.getUser();
 
-  const [{ count: customerCount }, { count: orderCount }] = await Promise.all([
+  const [{ count: customerCount }, { count: orderCount }, { count: paymentCount }, paymentsSumResult] = await Promise.all([
     supabase.from("customers").select("id", { count: "exact", head: true }),
-    supabase.from("orders").select("id", { count: "exact", head: true })
+    supabase.from("orders").select("id", { count: "exact", head: true }),
+    supabase.from("payments").select("id", { count: "exact", head: true }),
+    supabase.from("payments").select("amount, status")
   ]);
+
+  const revenue = (paymentsSumResult.data || [])
+    .filter((payment: any) => payment.status === "paid" || payment.status === "partial")
+    .reduce((sum: number, payment: any) => sum + Number(payment.amount || 0), 0);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 p-6">
@@ -30,6 +36,16 @@ export default async function DashboardHomePage() {
           <p className="text-sm text-slate-500">Orders</p>
           <p className="mt-2 text-2xl font-bold">{orderCount ?? 0}</p>
         </article>
+
+        <article className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <p className="text-sm text-slate-500">Payments</p>
+          <p className="mt-2 text-2xl font-bold">{paymentCount ?? 0}</p>
+        </article>
+
+        <article className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <p className="text-sm text-slate-500">Revenue</p>
+          <p className="mt-2 text-2xl font-bold">${revenue.toFixed(2)}</p>
+        </article>
       </section>
 
       <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
@@ -43,6 +59,9 @@ export default async function DashboardHomePage() {
           </Link>
           <Link href="/dashboard/orders" className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white">
             Open Orders
+          </Link>
+          <Link href="/dashboard/payments" className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white">
+            Open Payments
           </Link>
         </div>
       </section>

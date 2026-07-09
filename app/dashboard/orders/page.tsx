@@ -37,13 +37,54 @@ export default async function OrdersPage() {
     .order("created_at", { ascending: false })
     .limit(50);
 
-  const customers = (customersData || []) as Customer[];
-  const items = (catalogItemsData || []) as CatalogItem[];
-
-  const orders: Order[] = (ordersData || []).map((order: any) => ({
+  const orders = ((ordersData || []) as any[]).map((order) => ({
     ...order,
     customer_name: order.customers?.full_name ?? null
-  }));
+  })) as Order[];
+
+  const orderIds = orders.map((order) => order.id);
+
+  let paymentSummaryMap = new Map<string, { paid_amount: number; due_amount: number; payment_status: string }>();
+
+  if (orderIds.length > 0) {
+    const { data: paymentsData } = await supabase
+      .from("payments")
+      .select("order_id, amount, status")
+      .in("order_id", orderIds);
+
+    const grouped = new Map<string, { paid_amount: number; has_failed: boolean; has_pending: boolean }>();
+
+    for (const payment of paymentsData || []) {
+      const current = grouped.get(payment.order_id) || { paid_amount: 0, has_failed: false, has_pending: false };
+
+      if (payment.status === "paid" || payment.status === "partial") {
+        current.paid_amount += Number(payment.amount || 0);
+      }
+      if (payment.status === "failed") current.has_failed = true;
+      if (payment.status === "pending") current.has_pending = true;
+
+      grouped.set(payment.order_id, current);
+    }
+
+    paymentSummaryMap = new Map(
+      orders.map((order) => {
+        const summary = grouped.get(order.id) || { paid_amount: 0, has_failed: false, has_pending: false };
+        const paid_amount = Number(summary.paid_amount.toFixed(2));
+        const due_amount = Number((order.grand_total - paid_amount).toFixed(2));
+
+        let payment_status = "pending";
+        if (due_amount <= 0 && paid_amount > 0) payment_status = "paid";
+        else if (paid_amount > 0 && due_amount > 0) payment_status = "partial";
+        else if (summary.has_failed) payment_status = "failed";
+        else if (summary.has_pending) payment_status = "pending";
+
+        return [order.id, { paid_amount, due_amount: Math.max(0, due_amount), payment_status }];
+      })
+    );
+  }
+
+  const customers = (customersData || []) as Customer[];
+  const items = (catalogItemsData || []) as CatalogItem[];
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 p-6">
@@ -63,28 +104,35 @@ export default async function OrdersPage() {
           {orders.length === 0 ? (
             <p className="text-sm text-slate-500">No orders found.</p>
           ) : (
-            orders.map((order) => (
-              <article key={order.id} className="rounded-xl border border-slate-200 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm text-slate-500">Order #{order.id.slice(0, 8)}</p>
-                    <p className="font-medium">
-                      Customer: {order.customer_name || "Walk-in / No customer"}
-                    </p>
-                    <p className="text-sm text-slate-600">Subtotal: ${order.subtotal.toFixed(2)}</p>
-                    <p className="text-sm text-slate-600">Tax: ${order.tax.toFixed(2)}</p>
-                    <p className="text-sm text-slate-600">Discount: ${order.discount.toFixed(2)}</p>
-                    <p className="text-sm font-semibold text-slate-800">Grand Total: ${order.grand_total.toFixed(2)}</p>
-                    {order.notes ? <p className="mt-1 text-sm text-slate-500">Notes: {order.notes}</p> : null}
-                  </div>
+            orders.map((order) => {
+              const paymentSummary = paymentSummaryMap.get(order.id);
+              return (
+                <article key={order.id} className="rounded-xl border border-slate-200 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm text-slate-500">Order #{order.id.slice(0, 8)}</p>
+                      <p className="font-medium">Customer: {order.customer_name || "Walk-in / No customer"}</p>
+                      <p className="text-sm text-slate-600">Subtotal: ${order.subtotal.toFixed(2)}</p>
+                      <p className="text-sm text-slate-600">Tax: ${order.tax.toFixed(2)}</p>
+                      <p className="text-sm text-slate-600">Discount: ${order.discount.toFixed(2)}</p>
+                      <p className="text-sm font-semibold text-slate-800">Grand Total: ${order.grand_total.toFixed(2)}</p>
 
-                  <div className="grid gap-2">
-                    <OrderStatusBadge status={order.status} />
-                    <UpdateOrderStatusForm order={order} />
+                      <p className="mt-1 text-sm text-slate-600">
+                        Paid: ${paymentSummary?.paid_amount.toFixed(2) || "0.00"} • Due: ${paymentSummary?.due_amount.toFixed(2) || order.grand_total.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-slate-500 capitalize">Payment status: {paymentSummary?.payment_status || "pending"}</p>
+
+                      {order.notes ? <p className="mt-1 text-sm text-slate-500">Notes: {order.notes}</p> : null}
+                    </div>
+
+                    <div className="grid gap-2">
+                      <OrderStatusBadge status={order.status} />
+                      <UpdateOrderStatusForm order={order} />
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))
+                </article>
+              );
+            })
           )}
         </div>
       </section>
