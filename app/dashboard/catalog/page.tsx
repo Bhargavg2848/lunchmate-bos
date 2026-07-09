@@ -46,6 +46,27 @@ export default async function CatalogPage({
     category_name: item.catalog_categories?.name ?? "Uncategorized"
   }));
 
+  const itemIds = items.map((item) => item.id);
+  let stockByCatalogItemId = new Map<string, { current_stock: number; min_stock_level: number; unit: string }>();
+
+  if (itemIds.length > 0) {
+    const { data: inventoryData } = await supabase
+      .from("inventory_items")
+      .select("catalog_item_id, current_stock, min_stock_level, unit")
+      .in("catalog_item_id", itemIds);
+
+    stockByCatalogItemId = new Map(
+      (inventoryData || []).map((row: any) => [
+        row.catalog_item_id,
+        {
+          current_stock: Number(row.current_stock || 0),
+          min_stock_level: Number(row.min_stock_level || 0),
+          unit: row.unit || "unit"
+        }
+      ])
+    );
+  }
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 p-6">
       <header className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
@@ -99,18 +120,28 @@ export default async function CatalogPage({
             {items.length === 0 ? (
               <p className="text-sm text-slate-500">No items found.</p>
             ) : (
-              items.map((item) => (
-                <article key={item.id} className="rounded-xl border border-slate-200 p-4">
-                  <div className="mb-2">
-                    <h3 className="font-semibold">{item.name}</h3>
-                    <p className="text-sm text-slate-600">Category: {item.category_name}</p>
-                    <p className="text-sm text-slate-600">Price: ${item.price.toFixed(2)}</p>
-                    {item.description ? <p className="text-sm text-slate-500">{item.description}</p> : null}
-                    <p className="text-xs text-slate-500">Availability: {item.is_available ? "Available" : "Unavailable"}</p>
-                  </div>
-                  <EditItemForm item={item} categories={categories.filter((c) => c.is_active)} />
-                </article>
-              ))
+              items.map((item) => {
+                const stock = stockByCatalogItemId.get(item.id);
+                const low = stock ? stock.current_stock <= stock.min_stock_level : false;
+
+                return (
+                  <article key={item.id} className="rounded-xl border border-slate-200 p-4">
+                    <div className="mb-2">
+                      <h3 className="font-semibold">{item.name}</h3>
+                      <p className="text-sm text-slate-600">Category: {item.category_name}</p>
+                      <p className="text-sm text-slate-600">Price: ${item.price.toFixed(2)}</p>
+                      {item.description ? <p className="text-sm text-slate-500">{item.description}</p> : null}
+                      <p className="text-xs text-slate-500">Availability: {item.is_available ? "Available" : "Unavailable"}</p>
+                      <p className="text-xs text-slate-500">
+                        Stock: {stock ? `${stock.current_stock.toFixed(3)} ${stock.unit}` : "Not configured"}
+                        {stock ? ` • Min ${stock.min_stock_level.toFixed(3)}` : ""}
+                        {stock && low ? " • Low stock" : ""}
+                      </p>
+                    </div>
+                    <EditItemForm item={item} categories={categories.filter((c) => c.is_active)} />
+                  </article>
+                );
+              })
             )}
           </div>
         </div>
